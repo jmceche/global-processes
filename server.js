@@ -22,10 +22,12 @@ import mongoContainer from './mongoContainer.js';
 
 import { useMiddlewares } from './middlewares/useMiddlewares.js';
 import { authMiddleware } from './middlewares/authMiddleware.js';
+import cluster from 'cluster';
+import { cpus } from "os"
 
+const numCPUs = cpus().length
 const args = yargs(process.argv.slice(2)).argv;
 const port = args.port || 8080;
-
 // knex sqlite connection
 const app = express();
 const httpServer = new HttpServer(app);
@@ -35,7 +37,6 @@ const mongo = new mongoContainer(message);
 
 // connect to mongodb atlas
 mongoConnect()
-
 // Set template engine
 app.engine('hbs', handlebars({
   extname: '.hbs',
@@ -68,13 +69,14 @@ app.get("/info", (req, res) => {
     path: process.execPath,
     pid: process.pid,
     folder: process.cwd(),
+    cpus: numCPUs,
   }
   res.render("info", {data});
 });
 
 // sockets
 io.on('connection', async socket => {
-  io.sockets.emit('render_messages', await norm());
+  io.sockets.emit('render_messages', await norm().catch(err => console.log(err)));
   socket.on('submit_product', data => {
     axios.post('http://localhost:3000/api/productos', data)
     .then(resp => console.log(resp.data))
@@ -87,10 +89,21 @@ io.on('connection', async socket => {
   });
 });
 
+if (cluster.isPrimary) {
+  console.log(`Master ${process.pid} is running`);
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
+  }
+} else {
 
-httpServer.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-})
+
+  
+  httpServer.listen(port, () => {
+  //   console.log(`Server running on port ${port}`);
+        console.log(`Worker ${process.pid} started`);
+  })
+}
+
 
 
 const norm = async () => {
