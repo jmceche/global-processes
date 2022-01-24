@@ -21,7 +21,6 @@ import mongoConnect from './db/mongodb.js';
 import mongoContainer from './mongoContainer.js';
 
 import { useMiddlewares } from './middlewares/useMiddlewares.js';
-import { authMiddleware } from './middlewares/authMiddleware.js';
 import cluster from 'cluster';
 import { cpus } from "os"
 
@@ -35,8 +34,6 @@ const io = new IOServer(httpServer)
 
 const mongo = new mongoContainer(message);
 
-// connect to mongodb atlas
-mongoConnect()
 // Set template engine
 app.engine('hbs', handlebars({
   extname: '.hbs',
@@ -55,9 +52,13 @@ app.use("/api/randoms", randomRouter)
 app.use("/", authRoute)
 
 app.get("/", async (req, res) => {
-  const products = await axios.get(`http://localhost:${port}/api/productos`);
-  console.log(req.user)
-  res.render("main", { products: products.data, user: req.user.username });
+  try {
+    const products = await axios.get(`http://localhost:${port}/api/productos`);
+    console.log(req.user)
+    res.render("main", { products: products.data, user: req.user.username });
+  } catch (error) {
+    console.log(error);
+  }
 })
 
 app.get("/info", (req, res) => {
@@ -89,21 +90,20 @@ io.on('connection', async socket => {
   });
 });
 
-if (cluster.isPrimary) {
-  console.log(`Master ${process.pid} is running`);
+if (args.mode === "cluster" && cluster.isMaster) {
+  console.log(`CLUSTER - Master ${process.pid} is running`);
   for (let i = 0; i < numCPUs; i++) {
     cluster.fork();
   }
-} else {
-
-
-  
+} else {  
   httpServer.listen(port, () => {
-  //   console.log(`Server running on port ${port}`);
-        console.log(`Worker ${process.pid} started`);
+    console.log(`FORK - Server running on port ${port}`);
+    console.log(`Worker ${process.pid} started`);
   })
 }
 
+// connect to mongodb atlas
+mongoConnect()
 
 
 const norm = async () => {
